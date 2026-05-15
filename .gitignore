@@ -1,0 +1,18 @@
+# Sesión WhatsApp (contiene la clave — nunca al repo)
+bot-whatsapp/sessions/
+
+# Credenciales Google
+bot-whatsapp/credentials/
+
+# Env con datos reales
+.env
+
+# Node
+node_modules/
+*/node_modules/
+
+# Build
+plats-frontend/dist/
+
+# Logs
+*.log

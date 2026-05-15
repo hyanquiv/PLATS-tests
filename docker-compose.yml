@@ -1,0 +1,70 @@
+version: '3.9'
+
+# ═══════════════════════════════════════════════════════════════
+#  PLATS v3.0 — docker-compose.yml
+#
+#  MODO TEST (Oracle Cloud / sin backend Java):
+#    docker compose --profile mock up -d
+#
+#  MODO PRODUCCIÓN (con backend Java en red local):
+#    docker compose up -d
+# ═══════════════════════════════════════════════════════════════
+
+services:
+
+  # ── 1. Mock backend PLATS (solo para testing) ────────────────
+  plats-mock:
+    build: ./mock-backend
+    container_name: plats-mock
+    restart: unless-stopped
+    profiles: ["mock"]
+    networks:
+      - plats-net
+
+  # ── 2. Bot WhatsApp ──────────────────────────────────────────
+  plats-bot:
+    build: ./bot-whatsapp
+    container_name: plats-bot
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TZ: America/Lima
+    volumes:
+      - ./bot-whatsapp/sessions:/app/sessions
+      - ./bot-whatsapp/credentials:/app/credentials:ro
+      - bot-logs:/app/logs
+    ports:
+      - "3001:3001"
+    networks:
+      - plats-net
+
+  # ── 3. Frontend moderno ──────────────────────────────────────
+  plats-ui:
+    build: ./plats-frontend
+    container_name: plats-ui
+    restart: unless-stopped
+    networks:
+      - plats-net
+
+  # ── 4. Nginx reverse proxy ───────────────────────────────────
+  plats-nginx:
+    image: nginx:1.25-alpine
+    container_name: plats-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - plats-ui
+      - plats-bot
+    networks:
+      - plats-net
+
+volumes:
+  bot-logs:
+
+networks:
+  plats-net:
+    driver: bridge
