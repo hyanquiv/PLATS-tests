@@ -1,6 +1,7 @@
 FROM node:20-alpine
 
 RUN apk add --no-cache \
+    git \
     chromium nss freetype harfbuzz ca-certificates ttf-freefont \
     python3 make g++
 
