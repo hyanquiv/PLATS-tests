@@ -1,7 +1,3 @@
-/**
- * index.js — Punto de entrada del Bot PLATS
- * WhatsApp + panel QR HTTP + pre-auth PLATS + Google Calendar
- */
 require('dotenv').config();
 
 const {
@@ -25,42 +21,126 @@ let qrActual = '';
 let estadoConexion = 'desconectado';
 let sock = null;
 
-// ── Panel HTTP ────────────────────────────────────────────────────────────────
+// ── Panel HTTP con QR renderizado ─────────────────────────────────────────────
 const app = express();
 
 app.get('/', async (_req, res) => {
   let qrHtml = '';
-  if (qrActual) {
-    const svg = await qrcode.toString(qrActual, { type: 'svg' });
-    qrHtml = `<div style="text-align:center">
-      <h2>Escanear con WhatsApp</h2>
-      <div style="display:inline-block;padding:16px;background:#fff;border-radius:12px;box-shadow:0 2px 12px #0002">${svg}</div>
-      <p style="color:#666;font-size:13px">WhatsApp → Dispositivos vinculados → Vincular dispositivo</p>
-    </div>`;
+
+  if (estadoConexion === 'conectado') {
+    qrHtml = `
+      <div class="status ok">
+        <div class="icon">✅</div>
+        <h2>WhatsApp Conectado</h2>
+        <p>El bot está activo y escuchando mensajes.</p>
+      </div>`;
+  } else if (qrActual) {
+    try {
+      const qrDataUrl = await qrcode.toDataURL(qrActual, { width: 280, margin: 2 });
+      qrHtml = `
+        <div class="status pending">
+          <h2>Escanear QR con WhatsApp</h2>
+          <img src="${qrDataUrl}" alt="QR Code" style="border-radius:12px;box-shadow:0 4px 20px #0003">
+          <p>WhatsApp → <b>Dispositivos vinculados</b> → <b>Vincular dispositivo</b></p>
+          <p class="note">El QR se actualiza automáticamente cada 5 segundos</p>
+        </div>`;
+    } catch (e) {
+      qrHtml = `<pre style="font-size:10px;line-height:1.2">${qrActual}</pre>`;
+    }
+  } else {
+    qrHtml = `
+      <div class="status waiting">
+        <div class="icon">⏳</div>
+        <h2>Generando QR...</h2>
+        <p>La página se actualizará automáticamente.</p>
+      </div>`;
   }
-  res.send(`<!DOCTYPE html><html lang="es"><head>
-    <meta charset="UTF-8"><meta http-equiv="refresh" content="15">
-    <title>PLATS Bot</title>
-    <style>body{font-family:system-ui,sans-serif;max-width:600px;margin:40px auto;padding:0 20px}
-    .tag{display:inline-block;padding:6px 14px;border-radius:20px;font-weight:600;font-size:14px}
-    .conectado{background:#d4edda;color:#155724}.desconectado{background:#f8d7da;color:#721c24}
-    .esperando_qr{background:#fff3cd;color:#856404}
-    pre{background:#f4f4f4;padding:12px;border-radius:8px;font-size:12px}</style>
-  </head><body>
-    <h1>🏛️ PLATS Bot WhatsApp</h1>
-    <p>Estado: <span class="tag ${estadoConexion}">${estadoConexion.toUpperCase()}</span></p>
-    ${qrHtml || (estadoConexion === 'conectado'
-      ? '<p>✅ WhatsApp conectado correctamente.</p>'
-      : '<p>⏳ Iniciando...</p>')}
-    <hr>
-    <pre>Backend: ${process.env.PLATS_BASE_URL}\nAdmin  : ${process.env.BOT_ADMIN_PHONE || '—'}</pre>
-  </body></html>`);
+
+  res.send(`<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="refresh" content="5">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PLATS Bot — Panel QR</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f10;
+      color: #fff;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card {
+      background: #1a1a1d;
+      border: 1px solid #2a2a2e;
+      border-radius: 20px;
+      padding: 40px;
+      max-width: 420px;
+      width: 90%;
+      text-align: center;
+    }
+    .header { margin-bottom: 28px; }
+    .header h1 { font-size: 16px; font-weight: 700; color: #fff; }
+    .header p  { font-size: 12px; color: #666; margin-top: 4px; }
+    .status h2  { font-size: 18px; font-weight: 600; margin-bottom: 16px; }
+    .status p   { font-size: 13px; color: #aaa; margin-top: 10px; line-height: 1.5; }
+    .status img { margin: 0 auto; display: block; }
+    .status.ok   h2 { color: #4ade80; }
+    .status.pending h2 { color: #fff; }
+    .status.waiting h2 { color: #facc15; }
+    .icon { font-size: 48px; margin-bottom: 12px; }
+    .note { font-size: 11px !important; color: #555 !important; margin-top: 14px !important; }
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-top: 20px;
+    }
+    .badge.conectado   { background: #14532d; color: #4ade80; }
+    .badge.esperando   { background: #713f12; color: #facc15; }
+    .badge.desconectado{ background: #450a0a; color: #f87171; }
+    .footer { margin-top: 24px; font-size: 11px; color: #444; border-top: 1px solid #2a2a2e; padding-top: 16px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1>🏛️ PLATS Bot WhatsApp</h1>
+      <p>Corte Superior de Justicia de Arequipa</p>
+    </div>
+
+    ${qrHtml}
+
+    <span class="badge ${estadoConexion === 'conectado' ? 'conectado' : estadoConexion === 'esperando_qr' ? 'esperando' : 'desconectado'}">
+      ${estadoConexion.toUpperCase().replace('_', ' ')}
+    </span>
+
+    <div class="footer">
+      Backend: ${process.env.PLATS_BASE_URL || '—'}<br>
+      Admin: ${process.env.BOT_ADMIN_PHONE || '(no configurado)'}
+    </div>
+  </div>
+</body>
+</html>`);
 });
 
-app.get('/health', (_req, res) => res.json({ ok: true, estado: estadoConexion }));
-app.listen(PORT, () => logger.info(`Panel en http://0.0.0.0:${PORT}`));
+app.get('/health', (_req, res) => res.json({ ok: true, estado: estadoConexion, qr: !!qrActual }));
+app.get('/qr.png', async (_req, res) => {
+  if (!qrActual) return res.status(404).send('Sin QR');
+  const buf = await qrcode.toBuffer(qrActual, { width: 400, margin: 2 });
+  res.setHeader('Content-Type', 'image/png');
+  res.send(buf);
+});
 
-// ── WhatsApp ──────────────────────────────────────────────────────────────────
+app.listen(PORT, '0.0.0.0', () => logger.info(`Panel QR en http://0.0.0.0:${PORT}`));
+
+// ── WhatsApp con Baileys ──────────────────────────────────────────────────────
 async function iniciarBot() {
   const { state, saveCreds } = await useMultiFileAuthState(SESSION_DIR);
   const { version } = await fetchLatestBaileysVersion();
@@ -68,35 +148,52 @@ async function iniciarBot() {
   sock = makeWASocket({
     version,
     auth: state,
-    printQRInTerminal: true,
-    getMessage: async () => undefined
+    // Sin printQRInTerminal — lo manejamos nosotros
+    getMessage: async () => undefined,
+    logger: require('pino')({ level: 'silent' }) // silenciar logs internos de baileys
   });
 
   sock.ev.on('creds.update', saveCreds);
 
   sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
-    if (qr) { qrActual = qr; estadoConexion = 'esperando_qr'; }
+
+    // QR nuevo disponible → guardarlo para el panel
+    if (qr) {
+      qrActual = qr;
+      estadoConexion = 'esperando_qr';
+      logger.info(`📱 QR listo — abre http://TU_IP:${PORT} y escanea`);
+      // También imprimir en terminal como texto (por si acaso)
+      try {
+        const qrTerminal = await qrcode.toString(qr, { type: 'terminal', small: true });
+        console.log('\n' + qrTerminal);
+      } catch {}
+    }
 
     if (connection === 'open') {
       qrActual = '';
       estadoConexion = 'conectado';
       logger.info('✅ WhatsApp conectado');
+
       const admin = process.env.BOT_ADMIN_PHONE;
       if (admin) {
-        await sock.sendMessage(`${admin}@s.whatsapp.net`, {
-          text: '🤖 *Bot PLATS iniciado*\nEscribe *ayuda* para ver los comandos disponibles.'
-        });
+        try {
+          await sock.sendMessage(`${admin}@s.whatsapp.net`, {
+            text: '🤖 *Bot PLATS iniciado*\nEscribe *ayuda* para ver los comandos disponibles.'
+          });
+        } catch {}
       }
     }
 
     if (connection === 'close') {
+      qrActual = '';
       estadoConexion = 'desconectado';
       const code = lastDisconnect?.error?.output?.statusCode;
-      if (code !== DisconnectReason.loggedOut) {
-        logger.warn({ code }, 'Reconectando en 5 s...');
-        setTimeout(iniciarBot, 5000);
+      const reconectar = code !== DisconnectReason.loggedOut;
+      logger.warn({ code }, `Conexión cerrada. Reconectar: ${reconectar}`);
+      if (reconectar) {
+        setTimeout(iniciarBot, 3000);
       } else {
-        logger.error('Sesión cerrada. Borra sessions/ y reinicia.');
+        logger.error('Sesión cerrada por logout. Borra sessions/ y reinicia.');
       }
     }
   });
@@ -111,14 +208,15 @@ async function iniciarBot() {
         msg.message.conversation ||
         msg.message.extendedTextMessage?.text || '';
       if (!texto.trim()) continue;
-      logger.info({ remitente, texto: texto.substring(0, 80) }, '📩');
+
+      logger.info({ remitente, texto: texto.substring(0, 80) }, '📩 Mensaje recibido');
       try {
         await sock.sendPresenceUpdate('composing', remitente);
         const respuesta = await procesarMensaje(texto, remitente);
         await sock.sendMessage(remitente, { text: respuesta });
         await sock.sendPresenceUpdate('paused', remitente);
       } catch (err) {
-        logger.error({ err }, 'Error en respuesta');
+        logger.error({ err }, 'Error procesando mensaje');
       }
     }
   });
@@ -132,4 +230,4 @@ async function main() {
   await iniciarBot();
 }
 
-main().catch(err => { logger.fatal({ err }, '💥'); process.exit(1); });
+main().catch(err => { logger.fatal({ err }, '💥 Error fatal'); process.exit(1); });
