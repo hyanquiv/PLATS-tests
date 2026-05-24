@@ -55,7 +55,20 @@ async function routear(evento) {
 
     // ── Texto libre ────────────────────────────────────────
     if (type === 'chat' && body) {
-      await manejarTexto(phone, body.trim());
+      const txt = body.trim();
+
+      // Intentar resolver respuesta numérica ("1","2"...) a botón/lista
+      const rowId = wa.resolverRespuestaNumerica(phone, txt);
+      if (rowId) {
+        const esBtnDirecto = rowId.startsWith('btn_') || rowId.startsWith('confirm_') ||
+          rowId.startsWith('menu_') || rowId.startsWith('cambiar_') ||
+          rowId.startsWith('consulta_');
+        if (esBtnDirecto) await manejarBoton(phone, rowId);
+        else              await manejarSeleccion(phone, rowId);
+        return;
+      }
+
+      await manejarTexto(phone, txt);
       return;
     }
 

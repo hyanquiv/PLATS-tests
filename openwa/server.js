@@ -11,14 +11,41 @@
  * al bot en http://plats-bot:3001/webhook
  */
 
-const { Client, LocalAuth, MessageMedia, Buttons, List } = require('whatsapp-web.js');
+const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode  = require('qrcode');
 const express = require('express');
 const axios   = require('axios');
+const fs      = require('fs');
+const path    = require('path');
 
-const WEBHOOK_URL = process.env.WEBHOOK_URL || 'http://plats-bot:3001/webhook';
-const API_KEY     = process.env.OPENWA_API_KEY      || 'plats_openwa_key';
-const PORT        = parseInt(process.env.PORT || '8083');
+const WEBHOOK_URL   = process.env.WEBHOOK_URL    || 'http://plats-bot:3001/webhook';
+const API_KEY       = process.env.OPENWA_API_KEY || 'plats_openwa_key';
+const PORT          = parseInt(process.env.PORT  || '8083');
+const SESSIONS_PATH = process.env.SESSIONS_PATH  || '/sessions';
+
+// ── Limpiar lock files de Chromium al arrancar ────────────────
+// Evita el error "profile is in use by another process" en reinicios
+function limpiarLocks() {
+  const locks = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
+  try {
+    const walk = (dir) => {
+      if (!fs.existsSync(dir)) return;
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) { walk(fullPath); continue; }
+        if (locks.includes(entry.name)) {
+          fs.unlinkSync(fullPath);
+          console.log('[WA] 🔓 Lock eliminado:', fullPath);
+        }
+      }
+    };
+    walk(SESSIONS_PATH);
+  } catch (err) {
+    console.warn('[WA] No se pudo limpiar locks:', err.message);
+  }
+}
+
+limpiarLocks();
 
 let qrActual     = '';
 let estadoWA     = 'INITIALIZING';
@@ -41,6 +68,9 @@ const client = new Client({
       '--no-zygote',
       '--single-process',
       '--disable-gpu',
+      '--disable-background-networking',
+      '--disable-default-apps',
+      `--user-data-dir=${SESSIONS_PATH}/chromium-profile`,
     ],
     headless: true,
   },
@@ -223,64 +253,60 @@ app.post('/api/sendImage', async (req, res) => {
 });
 
 // Endpoint para enviar botones (máx 3)
+// Botones → texto numerado (Buttons API deprecada en WA no oficial)
+// El bot recibe la respuesta como texto "1", "2", "3" y la mapea al id del botón
 app.post('/api/sendButtons', async (req, res) => {
   if (!clienteListo) return res.status(503).json({ error: 'WhatsApp no conectado' });
   const { chatId, body, title = '', footer = '', buttons } = req.body;
+
+  const lineas = [];
+  if (title) lineas.push(`*${title}*`);
+  lineas.push(body);
+  lineas.push('');
+  buttons.forEach((b, i) => {
+    lineas.push(`${i + 1}️⃣  ${b.displayText || b.text}`);
+  });
+  if (footer) lineas.push(`\n_${footer}_`);
+  lineas.push('\n_Responde con el número de tu opción_');
+
   try {
-    const btnMsg = new Buttons(
-      body,
-      buttons.map(b => ({ id: b.id, body: b.displayText || b.text })),
-      title,
-      footer
-    );
-    await client.sendMessage(chatId, btnMsg);
+    await client.sendMessage(chatId, lineas.join('\n'));
     res.json({ ok: true });
   } catch (err) {
-    // Fallback: si botones no soportados, enviar como texto con opciones numeradas
-    const texto = `${title ? '*' + title + '*\n' : ''}${body}\n\n` +
-      buttons.map((b, i) => `${i + 1}️⃣ ${b.displayText || b.text}`).join('\n') +
-      (footer ? `\n\n_${footer}_` : '');
-    try {
-      await client.sendMessage(chatId, texto);
-      res.json({ ok: true, fallback: true });
-    } catch (err2) {
-      res.status(500).json({ error: err2.message });
-    }
+    res.status(500).json({ error: err.message });
   }
 });
 
-// Endpoint para enviar lista
+// Lista → texto numerado con secciones
+// El bot recibe "1", "2"... y mapea al rowId según el orden
 app.post('/api/sendListMessage', async (req, res) => {
   if (!clienteListo) return res.status(503).json({ error: 'WhatsApp no conectado' });
-  const { chatId, body, title = '', footer = '', buttonText = 'Ver opciones', sections } = req.body;
-  try {
-    const list = new List(
-      body,
-      buttonText,
-      sections.map(s => ({
-        title: s.title,
-        rows:  s.rows.map(r => ({ id: r.id, title: r.title, description: r.description || '' }))
-      })),
-      title,
-      footer
-    );
-    await client.sendMessage(chatId, list);
-    res.json({ ok: true });
-  } catch (err) {
-    // Fallback: texto numerado
-    let texto = `${title ? '*' + title + '*\n' : ''}${body}\n`;
-    let n = 1;
-    sections.forEach(s => {
-      texto += `\n*${s.title}*\n`;
-      s.rows.forEach(r => { texto += `${n}. ${r.title}\n`; n++; });
+  const { chatId, body, title = '', footer = '', sections } = req.body;
+
+  const lineas = [];
+  if (title) lineas.push(`*${title}*`);
+  lineas.push(body);
+
+  // Guardar el mapa número→rowId para que el bot lo pueda resolver
+  const rowMap = {};
+  let n = 1;
+  sections.forEach(s => {
+    lineas.push(`\n*${s.title}*`);
+    s.rows.forEach(r => {
+      lineas.push(`${n}. ${r.title}${r.description ? '  _' + r.description + '_' : ''}`);
+      rowMap[String(n)] = r.id;
+      n++;
     });
-    if (footer) texto += `\n_${footer}_`;
-    try {
-      await client.sendMessage(chatId, texto);
-      res.json({ ok: true, fallback: true });
-    } catch (err2) {
-      res.status(500).json({ error: err2.message });
-    }
+  });
+  if (footer) lineas.push(`\n_${footer}_`);
+  lineas.push('\n_Responde con el número de tu opción_');
+
+  // Enviar el mapa como metadata en la respuesta para que openwa-client lo cachee
+  try {
+    await client.sendMessage(chatId, lineas.join('\n'));
+    res.json({ ok: true, rowMap });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
