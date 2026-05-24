@@ -1,0 +1,39 @@
+version: '3.9'
+
+# ═══════════════════════════════════════════════════════════════
+#  openwa-gateway — se incluye desde el docker-compose principal
+#  via: include: - path: ./openwa/docker-compose.openwa.yml
+# ═══════════════════════════════════════════════════════════════
+
+services:
+  plats-openwa:
+    image: openwa/wa-automate:latest
+    container_name: plats-openwa
+    restart: unless-stopped
+    environment:
+      PORT: 8083
+      # Webhook: hacia el bot node.js
+      WEBHOOK_URL: http://plats-bot:3001/webhook
+      WEBHOOK_EVENTS: "message,qr,ready,disconnected"
+      # Autenticación de la API
+      API_KEY: ${OPENWA_API_KEY:-plats_openwa_key}
+      # Sesión persistente
+      SESSION_ID: plats-session
+      SESSION_DATA_PATH: /sessions
+      # Headless chrome
+      HEADLESS: "true"
+      DISABLE_SPINS: "true"
+      MULTI_DEVICE: "true"
+      # Identificación
+      INSTANCE_NAME: "PLATS Corte Arequipa"
+      TZ: America/Lima
+    volumes:
+      - openwa-sessions:/sessions
+    ports:
+      - "8083:8083"     # Dashboard + API REST
+    networks:
+      - plats-net
+    shm_size: '1gb'     # Chrome necesita shared memory
+
+volumes:
+  openwa-sessions:

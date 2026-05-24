@@ -1,16 +1,15 @@
 FROM node:20-alpine
 
+# canvas necesita Cairo y sus dependencias
 RUN apk add --no-cache \
     git \
-    chromium nss freetype harfbuzz ca-certificates ttf-freefont \
-    python3 make g++
-
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV CHROMIUM_PATH=/usr/bin/chromium-browser
+    python3 make g++ \
+    cairo-dev pango-dev libjpeg-turbo-dev giflib-dev \
+    librsvg-dev
 
 WORKDIR /app
 COPY package.json ./
-RUN npm install --omit=dev
+RUN npm install
 COPY src/ ./src/
 
 RUN mkdir -p /app/sessions /app/credentials /app/logs

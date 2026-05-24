@@ -1,18 +1,66 @@
 version: '3.9'
 
 # ═══════════════════════════════════════════════════════════════
-#  PLATS v3.0 — docker-compose.yml
+#  PLATS v3.0
 #
-#  MODO TEST (Oracle Cloud / sin backend Java):
+#  TEST  (Oracle / sin backend Java):
 #    docker compose --profile mock up -d
 #
-#  MODO PRODUCCIÓN (con backend Java en red local):
+#  PROD  (red judicial con backend Java):
 #    docker compose up -d
 # ═══════════════════════════════════════════════════════════════
 
 services:
 
-  # ── 1. Mock backend PLATS (solo para testing) ────────────────
+  # ── 1. PostgreSQL ────────────────────────────────────────────
+  plats-postgres:
+    image: postgres:16-alpine
+    container_name: plats-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-plats}
+      POSTGRES_USER:     ${POSTGRES_USER:-plats}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-plats_secret}
+      TZ: America/Lima
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-plats}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - plats-net
+
+  # ── 2. OpenWA — Gateway WhatsApp ─────────────────────────────
+  plats-openwa:
+    image: openwa/wa-automate:latest
+    container_name: plats-openwa
+    restart: unless-stopped
+    environment:
+      PORT: 8083
+      WEBHOOK_URL: http://plats-bot:3001/webhook
+      WEBHOOK_EVENTS: "message,qr,ready,disconnected"
+      API_KEY: ${OPENWA_API_KEY:-plats_openwa_key}
+      SESSION_ID: plats-session
+      SESSION_DATA_PATH: /sessions
+      HEADLESS: "true"
+      DISABLE_SPINS: "true"
+      MULTI_DEVICE: "true"
+      INSTANCE_NAME: "PLATS Corte Arequipa"
+      TZ: America/Lima
+    volumes:
+      - openwa-sessions:/sessions
+    ports:
+      - "8083:8083"       # Dashboard + QR → http://IP:8083
+    shm_size: '1gb'
+    networks:
+      - plats-net
+
+  # ── 3. Mock backend PLATS (solo testing) ─────────────────────
   plats-mock:
     build: ./mock-backend
     container_name: plats-mock
@@ -21,7 +69,7 @@ services:
     networks:
       - plats-net
 
-  # ── 2. Bot WhatsApp ──────────────────────────────────────────
+  # ── 4. Bot Node.js ───────────────────────────────────────────
   plats-bot:
     build: ./bot-whatsapp
     container_name: plats-bot
@@ -29,16 +77,20 @@ services:
     env_file: .env
     environment:
       TZ: America/Lima
+      POSTGRES_HOST: plats-postgres
+      OPENWA_URL: http://plats-openwa:8083
     volumes:
-      - ./bot-whatsapp/sessions:/app/sessions
       - ./bot-whatsapp/credentials:/app/credentials:ro
       - bot-logs:/app/logs
     ports:
-      - "3001:3001"
+      - "3001:3001"       # Webhook + panel estado
+    depends_on:
+      plats-postgres:
+        condition: service_healthy
     networks:
       - plats-net
 
-  # ── 3. Frontend moderno ──────────────────────────────────────
+  # ── 5. Frontend moderno ──────────────────────────────────────
   plats-ui:
     build: ./plats-frontend
     container_name: plats-ui
@@ -46,14 +98,13 @@ services:
     networks:
       - plats-net
 
-  # ── 4. Nginx reverse proxy ───────────────────────────────────
+  # ── 6. Nginx reverse proxy ───────────────────────────────────
   plats-nginx:
     image: nginx:1.25-alpine
     container_name: plats-nginx
     restart: unless-stopped
     ports:
       - "80:80"
-      - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
@@ -63,6 +114,8 @@ services:
       - plats-net
 
 volumes:
+  postgres-data:
+  openwa-sessions:
   bot-logs:
 
 networks:

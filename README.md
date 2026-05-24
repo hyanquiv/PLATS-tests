@@ -1,147 +1,101 @@
 # PLATS v3.0 — Sistema de Agendamiento de Audiencias
-
 **Corte Superior de Justicia de Arequipa**
-
----
 
 ## Contenedores
 
 | # | Nombre | Función | Puerto |
 |---|--------|---------|--------|
-| 1 | `plats-mock` | Mock del backend Java (solo testing) | interno |
-| 2 | `plats-bot` | Bot WhatsApp + panel QR | `3001` |
-| 3 | `plats-ui` | Frontend moderno (Vite → Nginx) | interno |
-| 4 | `plats-nginx` | Reverse proxy general | `80` |
+| 1 | `plats-postgres` | Base de datos PostgreSQL | `5432` |
+| 2 | `plats-openwa` | Gateway WhatsApp + QR dashboard | `8083` |
+| 3 | `plats-mock` | Mock backend Java (solo testing) | interno |
+| 4 | `plats-bot` | Lógica del bot + webhooks | `3001` |
+| 5 | `plats-ui` | Frontend moderno (Vite → Nginx) | interno |
+| 6 | `plats-nginx` | Reverse proxy general | `80` |
 
-El backend Java real (`172.28.0.150:8080`) no se containeriza — ya existe en la red judicial.
-
----
-
-## Despliegue en Oracle Cloud Ubuntu (testing)
-
-### 1. Clonar el repo en la instancia
+## Despliegue Oracle Cloud (testing)
 
 ```bash
 git clone https://github.com/TU_USUARIO/plats-sistema.git
 cd plats-sistema
-```
-
-### 2. Lanzar en modo test (con mock backend)
-
-```bash
 bash deploy.sh --mock
 ```
 
-El script instala Docker automáticamente si no está presente.
+## Puertos a abrir en OCI Security Lists
 
-### 3. Abrir puertos en Oracle Cloud (OCI)
-
-En la consola de OCI:
-1. Ve a **Networking → Virtual Cloud Networks → tu VCN**
-2. Entra a **Security Lists** (o Network Security Groups)
-3. Agrega reglas de **Ingress**:
-
-| Puerto | Protocolo | Descripción |
-|--------|-----------|-------------|
-| 80     | TCP       | Frontend PLATS |
-| 3001   | TCP       | Panel QR WhatsApp |
-
-### 4. Acceder
-
-| Servicio | URL |
-|----------|-----|
-| Frontend | `http://IP_PUBLICA` |
-| Panel QR bot | `http://IP_PUBLICA:3001` |
-
----
-
-## Despliegue en producción (red judicial)
-
-```bash
-# Editar .env primero
-nano .env
-# Cambiar PLATS_BASE_URL=http://172.28.0.150:8080/plats
-
-# Editar nginx/nginx.conf
-# Comentar: server plats-mock:8080;
-# Descomentar: server 172.28.0.150:8080;
-
-bash deploy.sh
-```
-
----
+| Puerto | Uso |
+|--------|-----|
+| 80 | Frontend web |
+| 3001 | Panel estado bot |
+| 8083 | Dashboard QR WhatsApp |
 
 ## Comandos útiles
 
 ```bash
-# Ver logs del bot
-docker compose logs -f plats-bot
-
-# Ver logs del mock
-docker compose logs -f plats-mock
-
-# Reiniciar un servicio
-docker compose restart plats-bot
-
-# Detener todo
-docker compose down
-
-# Borrar sesión WhatsApp (re-escanear QR)
-rm -rf bot-whatsapp/sessions/*
-docker compose restart plats-bot
+docker compose --profile mock up -d          # levantar todo (test)
+docker compose logs -f plats-bot             # logs del bot
+docker compose logs -f plats-openwa          # logs WhatsApp
+docker compose exec plats-bot npm test       # correr tests
+docker compose exec plats-postgres psql -U plats -d plats  # BD
+docker compose down                          # detener todo
 ```
 
----
+## Tests incluidos
 
-## Comandos WhatsApp del bot
+```bash
+# Validators (27 tests)
+node src/utils/validators.test.js
 
-| Comando | Descripción |
-|---------|-------------|
-| `ayuda` | Lista de comandos |
-| `hoy` | Agenda del día |
-| `consultar 09167-2025-90` | Buscar por expediente |
-| `agendar 09167-2025-90 sala1 hoy 09:00-11:00` | Nueva audiencia |
-| `audiencia 09167-2025-90 sala1 hoy 09:00-11:00 SOCABAYA` | Completo (agenda + Meet + penal) |
-| `meet <id>` | Generar/enviar link de Google Meet |
-| `eliminar <id>` | Cancelar audiencia |
+# Overlap (15 tests)
+node src/utils/overlap.test.js
+```
 
----
+## Flujo interactivo WhatsApp (sin escribir comandos)
 
-## Estructura del proyecto
+```
+Hola → Menú [botones]
+  → Nueva audiencia
+    → Sede [lista]
+    → Juzgado [lista]
+    → Sala [lista]
+    → Fecha [lista - próx 7 días]
+    → Horario [lista - SOLO slots libres]
+    → Internos [texto validado con regex]
+    → Expediente [texto validado con regex]
+    → Penal [lista - con email Calendar]
+    → Confirmar [botones]
+      → ✅ Agenda + Meet + invita penal + conecta RustDesk
+```
+
+## Estructura
 
 ```
 plats-sistema/
 ├── docker-compose.yml
 ├── deploy.sh
 ├── .env.example
-├── nginx/
-│   └── nginx.conf
-├── mock-backend/          ← Solo para testing
-│   ├── Dockerfile
-│   ├── package.json
-│   └── server.js
+├── nginx/nginx.conf
+├── postgres/schema.sql          ← Esquema BD + datos semilla
+├── mock-backend/                ← Solo testing
+├── openwa/                      ← Configuración gateway WA
 ├── bot-whatsapp/
 │   ├── Dockerfile
 │   ├── package.json
-│   ├── sessions/          ← Sesión QR (gitignored)
-│   ├── credentials/       ← google.json (gitignored)
 │   └── src/
-│       ├── index.js
-│       ├── commands.js
-│       ├── plats-client.js
-│       ├── google-meet.js
-│       ├── rustdesk.js
-│       └── logger.js
-└── plats-frontend/
-    ├── Dockerfile
-    ├── nginx-spa.conf
-    ├── package.json
-    ├── vite.config.js
-    ├── index.html
-    ├── public/
-    │   ├── pj.svg
-    │   └── favicon.svg
-    └── src/
-        ├── main.js
-        └── style.css
+│       ├── index.js             ← Servidor webhook
+│       ├── router.js            ← Despacha mensajes/botones/listas
+│       ├── openwa-client.js     ← API REST de OpenWA
+│       ├── plats-client.js      ← API REST del backend Java
+│       ├── db.js                ← PostgreSQL + validador overlap
+│       ├── agenda-image.js      ← Genera PNG de la agenda
+│       ├── google-meet.js       ← Google Calendar API
+│       ├── rustdesk.js          ← Conexión automática al penal
+│       ├── handlers/
+│       │   ├── agendar.js       ← Flujo 9 pasos
+│       │   └── consultar.js     ← Agenda + búsqueda
+│       └── utils/
+│           ├── validators.js    ← Regex + normalización
+│           ├── session-flow.js  ← Estado por usuario (15 min TTL)
+│           ├── validators.test.js
+│           └── overlap.test.js
+└── plats-frontend/              ← UI web moderna
 ```
