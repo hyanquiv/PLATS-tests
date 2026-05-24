@@ -21,8 +21,11 @@ const http = axios.create({
 const rowMapCache = new NodeCache({ stdTTL: 600 });
 
 function toChatId(phone) {
-  const clean = String(phone).replace(/[^0-9]/g, '');
-  return clean.includes('@') ? clean : `${clean}@c.us`;
+  const s = String(phone);
+  // Si ya trae sufijo (@c.us, @lid, @g.us) preservarlo tal cual
+  if (s.includes('@')) return s;
+  // Si es solo número, agregar @c.us como fallback
+  return s.replace(/[^0-9]/g, '') + '@c.us';
 }
 
 /**

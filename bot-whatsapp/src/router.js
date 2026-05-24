@@ -28,18 +28,20 @@ function estaAutorizado(phone) {
 async function routear(evento) {
   try {
     const { type, from, body, selectedRowId, title } = extraerDatos(evento);
-    const phone = from.replace(/@.*/, '');
+    // Preservar el sufijo original (@lid, @c.us) para enviarlo de vuelta
+    const phone = from;       // ej: "73534168629264@lid"
+    const phoneClean = from.replace(/@.*/, ''); // solo dígitos para logs y DB
 
-    if (!phone || phone === 'status') return; // ignorar status broadcast
+    if (!phoneClean || phoneClean === 'status') return; // ignorar status broadcast
 
     logger.info({ phone, type, body: (body||'').substring(0,50) }, '📩');
 
-    if (!estaAutorizado(phone)) {
+    if (!estaAutorizado(phoneClean)) {
       await wa.sendText(phone, '⛔ No tienes permiso para usar este sistema.');
       return;
     }
 
-    await db.logActividad(phone, type, { body, selectedRowId });
+    await db.logActividad(phoneClean, type, { body, selectedRowId });
 
     // ── Selección de lista ─────────────────────────────────
     if (type === 'list_response' && selectedRowId) {
