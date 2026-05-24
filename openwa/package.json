@@ -1,12 +1,14 @@
 {
   "name": "plats-wa-gateway",
-  "version": "1.0.0",
-  "description": "Gateway WhatsApp para PLATS usando whatsapp-web.js",
+  "version": "2.0.0",
+  "description": "Gateway WhatsApp PLATS usando Baileys",
   "main": "server.js",
   "dependencies": {
-    "whatsapp-web.js": "^1.26.0",
+    "@whiskeysockets/baileys": "^6.7.9",
     "qrcode": "^1.5.3",
     "express": "^4.18.2",
-    "axios": "^1.6.7"
+    "axios": "^1.6.7",
+    "pino": "^8.19.0",
+    "dotenv": "^16.4.5"
   }
 }

@@ -1,4 +1,10 @@
-version: '3.9'
+# PLATS v3.0 — docker-compose.yml
+#
+# TEST  (Oracle / sin backend Java):
+#   docker compose --profile mock up -d
+#
+# PROD  (red judicial con backend Java):
+#   docker compose up -d
 
 services:
 
@@ -25,25 +31,21 @@ services:
     networks:
       - plats-net
 
-  # ── 2. Gateway WhatsApp ──────────────────────────────────────
+  # ── 2. Gateway WhatsApp (Baileys) ────────────────────────────
   plats-openwa:
     build: ./openwa
     container_name: plats-openwa
     restart: unless-stopped
     environment:
-      OPENWA_API_KEY:               ${OPENWA_API_KEY:-plats_openwa_key_cambia_esto}
-      WEBHOOK_URL:                   http://plats-bot:3001/webhook
-      PORT:                          "8083"
-      PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
-      PUPPETEER_EXECUTABLE_PATH:    /usr/bin/chromium
+      OPENWA_API_KEY: ${OPENWA_API_KEY:-plats_openwa_key}
+      WEBHOOK_URL:    http://plats-bot:3001/webhook
+      PORT:           "8083"
+      SESSION_DIR:    /sessions
       TZ: America/Lima
     volumes:
       - openwa-sessions:/sessions
     ports:
       - "8083:8083"
-    shm_size: '1gb'
-    cap_add:
-      - SYS_ADMIN
     networks:
       - plats-net
 
