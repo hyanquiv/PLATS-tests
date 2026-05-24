@@ -1,0 +1,18 @@
+{
+  "sessionId": "plats-session",
+  "sessionDataPath": "/sessions",
+  "port": 8083,
+  "apiKey": "plats_openwa_key",
+  "headless": true,
+  "inDocker": true,
+  "disableSpins": true,
+  "qrTimeout": 0,
+  "noKillOnLogout": true,
+  "multiDevice": true,
+  "popup": false,
+  "logLevel": "verbose",
+  "webhook": {
+    "url": "http://plats-bot:3001/webhook",
+    "events": ["message", "qr", "ready", "disconnected"]
+  }
+}

@@ -35,28 +35,22 @@ services:
     networks:
       - plats-net
 
-  # ── 2. OpenWA — Gateway WhatsApp ─────────────────────────────
+  # ── 2. OpenWA — Gateway WhatsApp (imagen propia con Chromium) ─
   plats-openwa:
-    image: openwa/wa-automate:latest
+    build: ./openwa
     container_name: plats-openwa
     restart: unless-stopped
     environment:
-      PORT: 8083
-      WEBHOOK_URL: http://plats-bot:3001/webhook
-      WEBHOOK_EVENTS: "message,qr,ready,disconnected"
-      API_KEY: ${OPENWA_API_KEY:-plats_openwa_key}
-      SESSION_ID: plats-session
-      SESSION_DATA_PATH: /sessions
-      HEADLESS: "true"
-      DISABLE_SPINS: "true"
-      MULTI_DEVICE: "true"
-      INSTANCE_NAME: "PLATS Corte Arequipa"
+      PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
       TZ: America/Lima
     volumes:
       - openwa-sessions:/sessions
     ports:
-      - "8083:8083"       # Dashboard + QR → http://IP:8083
+      - "8083:8083"
     shm_size: '1gb'
+    cap_add:
+      - SYS_ADMIN        # necesario para sandbox de Chrome
     networks:
       - plats-net
 
@@ -83,7 +77,7 @@ services:
       - ./bot-whatsapp/credentials:/app/credentials:ro
       - bot-logs:/app/logs
     ports:
-      - "3001:3001"       # Webhook + panel estado
+      - "3001:3001"
     depends_on:
       plats-postgres:
         condition: service_healthy
