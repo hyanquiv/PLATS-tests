@@ -17,7 +17,7 @@ const express = require('express');
 const axios   = require('axios');
 
 const WEBHOOK_URL = process.env.WEBHOOK_URL || 'http://plats-bot:3001/webhook';
-const API_KEY     = process.env.API_KEY      || 'plats_openwa_key';
+const API_KEY     = process.env.OPENWA_API_KEY      || 'plats_openwa_key';
 const PORT        = parseInt(process.env.PORT || '8083');
 
 let qrActual     = '';

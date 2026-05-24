@@ -1,15 +1,5 @@
 version: '3.9'
 
-# ═══════════════════════════════════════════════════════════════
-#  PLATS v3.0
-#
-#  TEST  (Oracle / sin backend Java):
-#    docker compose --profile mock up -d
-#
-#  PROD  (red judicial con backend Java):
-#    docker compose up -d
-# ═══════════════════════════════════════════════════════════════
-
 services:
 
   # ── 1. PostgreSQL ────────────────────────────────────────────
@@ -35,14 +25,17 @@ services:
     networks:
       - plats-net
 
-  # ── 2. OpenWA — Gateway WhatsApp (imagen propia con Chromium) ─
+  # ── 2. Gateway WhatsApp ──────────────────────────────────────
   plats-openwa:
     build: ./openwa
     container_name: plats-openwa
     restart: unless-stopped
     environment:
+      OPENWA_API_KEY:               ${OPENWA_API_KEY:-plats_openwa_key_cambia_esto}
+      WEBHOOK_URL:                   http://plats-bot:3001/webhook
+      PORT:                          "8083"
       PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
-      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
+      PUPPETEER_EXECUTABLE_PATH:    /usr/bin/chromium
       TZ: America/Lima
     volumes:
       - openwa-sessions:/sessions
@@ -50,7 +43,7 @@ services:
       - "8083:8083"
     shm_size: '1gb'
     cap_add:
-      - SYS_ADMIN        # necesario para sandbox de Chrome
+      - SYS_ADMIN
     networks:
       - plats-net
 
@@ -72,7 +65,7 @@ services:
     environment:
       TZ: America/Lima
       POSTGRES_HOST: plats-postgres
-      OPENWA_URL: http://plats-openwa:8083
+      OPENWA_URL:    http://plats-openwa:8083
     volumes:
       - ./bot-whatsapp/credentials:/app/credentials:ro
       - bot-logs:/app/logs
