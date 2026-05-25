@@ -1,6 +1,6 @@
 import './style.css';
 
-const API = '/plats';
+const API = '/api';
 
 const state = {
   fecha: todayStr(), rooms: [], sedes: [], instancias: [],

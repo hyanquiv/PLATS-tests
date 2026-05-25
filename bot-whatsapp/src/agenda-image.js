@@ -14,7 +14,7 @@ const SUBHDR_H   = 40;
 const ROW_H      = 52;
 const COL_TIME_W = 72;
 const PADDING     = 20;
-const FONT        = 'sans-serif';
+const FONT        = 'FreeSans, DejaVu Sans, Noto Sans, sans-serif';
 
 // Colores institucionales
 const COLORS = {

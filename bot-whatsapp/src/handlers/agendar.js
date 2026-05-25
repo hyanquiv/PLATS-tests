@@ -6,6 +6,7 @@
  */
 const wa       = require('../openwa-client');
 const db       = require('../db');
+const plats    = require('../plats-client');
 const { crearMeet }           = require('../google-meet');
 const { conectarPenal }       = require('../rustdesk');
 const { getSession, setSession, clearSession, generarResumen } = require('../utils/session-flow');
@@ -316,6 +317,25 @@ async function confirmarAgendamiento(phone) {
       linkMeet,
       eventoCalendarId: eventId,
     });
+
+    // 3.5 Sincronizar con backend Java PLATS para que la web lo vea
+    try {
+      await plats.crearAudiencia({
+        idSala:      d.idSala,
+        idSede:      d.idSede,
+        idInstancia: d.idJuzgado,
+        expediente:  d.expediente,
+        internos:    d.internos,
+        solicitante: d.solicitante || 'BOT',
+        fecha:       d.fecha,
+        inicio:      d.inicio,
+        fin:         d.fin,
+        link:        linkMeet,
+        comunicacion: 'WHATSAPP',
+      });
+    } catch (err) {
+      logger.warn({ err }, '⚠️  No se pudo sincronizar con backend Java');
+    }
 
     // 4. Intentar conectar penal automáticamente
     if (d.idPenal && linkMeet) {
