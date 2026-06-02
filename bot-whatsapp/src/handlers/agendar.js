@@ -167,8 +167,9 @@ async function pasoCuatro_Horario(phone, fecha, fechaLabel) {
 
   if (slots.length === 0) {
     await wa.sendButtons(phone, {
-      title:  '😔 Sin disponibilidad',
-      body:   `*${salaNombre}* no tiene horarios libres el *${fechaLabel}*.\n¿Qué deseas hacer?`,
+      title: '😔 Sin disponibilidad',
+      body: `*${salaNombre}* no tiene horarios libres el *${fechaLabel}*.
+¿Qué deseas hacer?`,
       buttons: [
         { id: 'cambiar_sala',  text: '🔄 Cambiar sala'  },
         { id: 'cambiar_fecha', text: '📅 Cambiar fecha'  },
@@ -178,28 +179,24 @@ async function pasoCuatro_Horario(phone, fecha, fechaLabel) {
     return;
   }
 
-  // Agrupar slots por bloque de mañana/tarde
-  const manana = slots.filter(s => parseInt(s.inicio) < 12);
-  const tarde  = slots.filter(s => parseInt(s.inicio) >= 12);
+  // Guardar slots en sesión para resolver el intervalo después
+  setSession(phone, { paso: 5, datos: { ...session.datos, fecha, fechaLabel, _slots: slots } });
 
-  const sections = [];
-  if (manana.length) sections.push({
-    title: '🌅 Mañana',
-    rows:  manana.map(s => ({ id: `slot_${s.inicio}_${s.fin}`, title: slotLabel(s) })),
-  });
-  if (tarde.length) sections.push({
-    title: '🌇 Tarde',
-    rows:  tarde.map(s => ({ id: `slot_${s.inicio}_${s.fin}`, title: slotLabel(s) })),
-  });
+  const lineas = [`🕐 *Paso 5 de 8 — Horario disponible*
+`];
+  lineas.push(`Sala: *${salaNombre}* | Fecha: *${fechaLabel}*
+`);
+  lineas.push('Slots disponibles:
+');
+  slots.forEach((s, i) => lineas.push(`${i + 1}. ${s.inicio} – ${s.fin}`));
+  lineas.push('
+📝 Responde con el rango deseado.');
+  lineas.push(`Ej: \`2-4\` = desde las ${slots[1]?.inicio} hasta las ${slots[3]?.fin}`);
+  lineas.push(`Un solo slot: \`3-3\` = solo ${slots[2]?.inicio} – ${slots[2]?.fin}`);
 
-  await wa.sendList(phone, {
-    title:      '🕐 Paso 5 de 8 — Horario',
-    body:       `Sala: *${salaNombre}* | Fecha: *${fechaLabel}*\nHorarios disponibles (solo los libres):`,
-    buttonText: `Ver ${slots.length} horarios libres`,
-    sections,
-  });
+  await wa.sendText(phone, lineas.join('
+'));
 }
-
 // ═════════════════════════════════════════════════════════════
 //  PASO 6 — Internos (texto libre validado)
 // ═════════════════════════════════════════════════════════════
@@ -318,23 +315,23 @@ async function confirmarAgendamiento(phone) {
       eventoCalendarId: eventId,
     });
 
-    // 3.5 Sincronizar con backend Java PLATS para que la web lo vea
+    // Sincronizar con backend Java para que la web lo vea
     try {
       await plats.crearAudiencia({
         idSala:      d.idSala,
         idSede:      d.idSede,
-        idInstancia: d.idJuzgado,
+        idInstancia: String(d.idJuzgado),
         expediente:  d.expediente,
         internos:    d.internos,
-        solicitante: d.solicitante || 'BOT',
+        solicitante: d.solicitante || 'BOT-WHATSAPP',
+        comunicacion: 'WHATSAPP',
+        link:        linkMeet || '',
         fecha:       d.fecha,
         inicio:      d.inicio,
         fin:         d.fin,
-        link:        linkMeet,
-        comunicacion: 'WHATSAPP',
       });
-    } catch (err) {
-      logger.warn({ err }, '⚠️  No se pudo sincronizar con backend Java');
+    } catch (syncErr) {
+      logger.warn({ syncErr }, '⚠️  No se pudo sincronizar con backend Java — solo guardado en PostgreSQL');
     }
 
     // 4. Intentar conectar penal automáticamente

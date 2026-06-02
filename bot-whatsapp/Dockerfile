@@ -3,12 +3,8 @@ FROM node:20-alpine
 RUN apk add --no-cache \
     git python3 make g++ \
     cairo-dev pango-dev libjpeg-turbo-dev giflib-dev librsvg-dev \
-    ttf-freefont \
-    font-noto \
-    font-noto-extra \
-    fontconfig
+    ttf-freefont font-noto fontconfig
 
-# Regenerar caché de fuentes
 RUN fc-cache -fv
 
 WORKDIR /app
