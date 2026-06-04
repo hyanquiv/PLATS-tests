@@ -22,8 +22,11 @@ function expect(val) {
 // ── Expediente ──────────────────────────────────────────────────
 console.log('\nExpediente:');
 test('válido estándar',       () => expect(validar('expediente','09167-2025-90').ok).toBeTrue());
-test('válido corto',          () => expect(validar('expediente','0001-2024-01').ok).toBeTrue());
-test('válido largo',          () => expect(validar('expediente','123456-2026-1234').ok).toBeTrue());
+test('válido dígito final 0', () => expect(validar('expediente','12345-2022-0').ok).toBeTrue());
+test('válido dígito final 99',() => expect(validar('expediente','12345-2022-99').ok).toBeTrue());
+test('rechaza 4 dígitos inicio',() => expect(validar('expediente','0001-2024-01').ok).toBeFalse());
+test('rechaza 6 dígitos inicio',() => expect(validar('expediente','123456-2026-12').ok).toBeFalse());
+test('rechaza 3 dígitos final', () => expect(validar('expediente','12345-2026-100').ok).toBeFalse());
 test('rechaza barras',        () => expect(validar('expediente','9167/2025/90').ok).toBeFalse());
 test('rechaza letras',        () => expect(validar('expediente','ABC-2025-90').ok).toBeFalse());
 test('rechaza año corto',     () => expect(validar('expediente','09167-25-90').ok).toBeFalse());

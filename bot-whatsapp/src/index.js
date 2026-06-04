@@ -105,14 +105,8 @@ app.get('/api/agenda/salas', async (_req, res) => {
 
 app.get('/api/agenda/seleccion', async (req, res) => {
   try {
-    const TZ = 'America/Lima';
-    const fecha = req.query.fecha ||
-      new Date().toLocaleDateString('sv-SE', { timeZone: TZ });
-    const mov = parseInt(req.query.movimiento || '0');
-    let d = new Date(fecha + 'T12:00:00');
-    if (mov !== 0) d.setDate(d.getDate() + mov);
-    const fechaFinal = d.toLocaleDateString('sv-SE', { timeZone: TZ });
-    const audiencias = await db.getAudienciasPorFecha(fechaFinal);
+    const fecha = req.query.fecha || new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Lima' });
+    const audiencias = await db.getAudienciasPorFecha(fecha);
     res.json({
       audiencias: audiencias.map(a => ({
         id:          String(a.id),
@@ -124,37 +118,25 @@ app.get('/api/agenda/seleccion', async (req, res) => {
         solicitante: a.solicitante,
         inicio:      String(a.inicio).substring(0, 5),
         fin:         String(a.fin).substring(0, 5),
-        fecha:       fechaFinal,
+        fecha:       a.fecha,
         link:        a.link_meet || '',
         accion:      true,
       })),
-      fechaTexto: d.toLocaleDateString('es-PE', {
-        weekday: 'long', day: 'numeric', month: 'long',
-        year: 'numeric', timeZone: TZ
-      }),
-      fechaSeleccionada: fechaFinal,
+      fechaTexto:        new Date(fecha + 'T12:00:00').toLocaleDateString('es-PE', { weekday:'long', day:'numeric', month:'long', year:'numeric', timeZone:'America/Lima' }),
+      fechaSeleccionada: fecha,
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/api/agenda/:id', async (req, res) => {
   try {
-    const { rows } = await db.pool.query(
-      `SELECT a.*, s.nombre AS sala_nombre FROM audiencias a
-       JOIN salas s ON s.id = a.id_sala WHERE a.id = $1`,
-      [req.params.id]
-    );
+    const { rows } = await db.pool.query('SELECT * FROM audiencias WHERE id = $1', [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'No encontrado' });
     const a = rows[0];
-    res.json({
-      id: String(a.id), idSala: a.id_sala, fecha: a.fecha,
-      inicio: String(a.inicio).substring(0,5),
-      fin:    String(a.fin).substring(0,5),
-      expediente: a.expediente, internos: a.internos,
-      solicitante: a.solicitante, link: a.link_meet || '',
-      comunicacion: a.comunicacion, accion: true,
-      fechaHoraRegistro: a.agendado_en,
-    });
+    res.json({ id: String(a.id), idSala: a.id_sala, fecha: a.fecha,
+      inicio: String(a.inicio).substring(0,5), fin: String(a.fin).substring(0,5),
+      expediente: a.expediente, internos: a.internos, solicitante: a.solicitante,
+      link: a.link_meet || '', comunicacion: a.comunicacion, accion: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -171,19 +153,6 @@ app.post('/api/agenda/evento', async (req, res) => {
       comunicacion: b.comunicacion || 'WHATSAPP', linkMeet: b.link || null,
     });
     res.status(201).json({ id: String(a.id), ...b });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.put('/api/agenda/evento', async (req, res) => {
-  try {
-    const b = req.body;
-    await db.pool.query(
-      `UPDATE audiencias SET id_sala=$1, fecha=$2, inicio=$3, fin=$4,
-       expediente=$5, internos=$6, solicitante=$7, link_meet=$8 WHERE id=$9`,
-      [b.idSala, b.fecha, b.inicio, b.fin, b.expediente,
-       b.internos, b.solicitante, b.link || null, b.id]
-    );
-    res.json({ ok: true, ...b });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

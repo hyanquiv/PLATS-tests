@@ -1,24 +1,27 @@
 /**
  * handlers/agendar.js
- * Flujo interactivo de agendamiento en 9 pasos.
- * Cada paso muestra selectores (listas/botones) excepto
- * internos y expediente que se validan con regex.
+ * Flujo interactivo de agendamiento — 7 pasos enfocados.
+ *
+ * CAMPOS REQUERIDOS:
+ *  1. Sede solicitante
+ *  2. Juzgado (1°, 2°, 3°... JIP, JUP, Colegiado)
+ *  3. Fecha
+ *  4. Horario (intervalo de slots, ej: 2-4)
+ *  5. Internos (nombre con regex)
+ *  6. Expediente (12345-AAAA-00)
+ *  7. Solicitante (desde perfil WA si disponible, sino fallback manual)
+ *  + Enlace Meet (pendiente de automatización — se genera al confirmar)
  */
 const wa       = require('../openwa-client');
 const db       = require('../db');
 const plats    = require('../plats-client');
 const { crearMeet }           = require('../google-meet');
-const { conectarPenal }       = require('../rustdesk');
 const { getSession, setSession, clearSession, generarResumen } = require('../utils/session-flow');
 const { validar, normalizarExpediente, normalizarNombre }      = require('../utils/validators');
 const { generarImagenAgenda } = require('../agenda-image');
 const logger = require('../logger');
 
 // ── Helpers ───────────────────────────────────────────────────
-function fmt2(n) { return String(n).padStart(2,'0'); }
-
-function slotLabel(s) { return `${s.inicio} – ${s.fin}`; }
-
 function todayPeru() {
   return new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Lima' });
 }
@@ -33,10 +36,15 @@ function nextDays(n = 7) {
       timeZone: 'America/Lima',
       weekday: 'short', day: 'numeric', month: 'short'
     });
-    days.push({ value: str, label: i === 0 ? `Hoy — ${label}` : i === 1 ? `Mañana — ${label}` : label });
+    days.push({
+      value: str,
+      label: i === 0 ? `Hoy — ${label}` : i === 1 ? `Mañana — ${label}` : label
+    });
   }
   return days;
 }
+
+function slotLabel(s) { return `${s.inicio} – ${s.fin}`; }
 
 // ═════════════════════════════════════════════════════════════
 //  PASO 0 — Menú principal
@@ -58,20 +66,23 @@ async function menuPrincipal(phone) {
 // ═════════════════════════════════════════════════════════════
 //  PASO 1 — Seleccionar sede
 // ═════════════════════════════════════════════════════════════
-async function pasoCero_Sede(phone) {
+async function pasoCero_Sede(phone, nombreWhatsApp) {
   const sedes = await db.getSedes();
-  setSession(phone, { paso: 1, datos: {} });
+  // Guardar nombre de WA si disponible para pre-rellenar solicitante
+  setSession(phone, {
+    paso: 1,
+    datos: nombreWhatsApp ? { solicitante: nombreWhatsApp } : {}
+  });
 
   await wa.sendList(phone, {
-    title:      '📍 Paso 1 de 8 — Sede solicitante',
+    title:      '📍 Paso 1 de 7 — Sede solicitante',
     body:       'Selecciona la sede judicial desde donde se solicita la audiencia:',
     buttonText: 'Ver sedes',
     sections: [{
       title: 'Sedes disponibles',
       rows:  sedes.map(s => ({
-        id:          `sede_${s.id}`,
-        title:       s.denominacion,
-        description: `Código: ${s.id}`,
+        id:    `sede_${s.id}`,
+        title: s.denominacion,
       })),
     }],
   });
@@ -85,14 +96,13 @@ async function pasoUno_Juzgado(phone, idSede, sedeNombre) {
   const session  = getSession(phone);
   setSession(phone, { paso: 2, datos: { ...session.datos, idSede, sedeNombre } });
 
-  // Dividir en secciones si hay muchos
   const rows = juzgados.map(j => ({
     id:    `juzgado_${j.id}`,
     title: j.denominacion,
   }));
 
   await wa.sendList(phone, {
-    title:      '⚖️ Paso 2 de 8 — Juzgado',
+    title:      '⚖️ Paso 2 de 7 — Juzgado',
     body:       `Sede: *${sedeNombre}*\nSelecciona el juzgado:`,
     buttonText: 'Ver juzgados',
     sections: [{ title: 'Juzgados', rows }],
@@ -100,50 +110,16 @@ async function pasoUno_Juzgado(phone, idSede, sedeNombre) {
 }
 
 // ═════════════════════════════════════════════════════════════
-//  PASO 3 — Seleccionar sala
+//  PASO 3 — Seleccionar fecha
 // ═════════════════════════════════════════════════════════════
-async function pasoDos_Sala(phone, idJuzgado, juzgadoNombre) {
-  const salas   = await db.getSalas();
+async function pasoDos_Fecha(phone, idJuzgado, juzgadoNombre) {
   const session = getSession(phone);
   setSession(phone, { paso: 3, datos: { ...session.datos, idJuzgado, juzgadoNombre } });
 
-  const SALA_ICONS = { SALA: '🏛️', CABINA: '👤' };
-  await wa.sendList(phone, {
-    title:      '🚪 Paso 3 de 8 — Sala o cabina',
-    body:       'Selecciona la sala para la audiencia:',
-    buttonText: 'Ver salas',
-    sections: [
-      {
-        title: 'Salas (audiencias colectivas)',
-        rows:  salas.filter(s => s.tipo === 'SALA').map(s => ({
-          id:          `sala_${s.id}`,
-          title:       `${SALA_ICONS.SALA} ${s.nombre}`,
-          description: `Capacidad: ${s.capacidad} personas`,
-        })),
-      },
-      {
-        title: 'Cabinas (individuales)',
-        rows:  salas.filter(s => s.tipo === 'CABINA').map(s => ({
-          id:          `sala_${s.id}`,
-          title:       `${SALA_ICONS.CABINA} ${s.nombre}`,
-          description: 'Conexión individual',
-        })),
-      },
-    ],
-  });
-}
-
-// ═════════════════════════════════════════════════════════════
-//  PASO 4 — Seleccionar fecha
-// ═════════════════════════════════════════════════════════════
-async function pasoTres_Fecha(phone, idSala, salaNombre) {
-  const session = getSession(phone);
-  setSession(phone, { paso: 4, datos: { ...session.datos, idSala, salaNombre } });
-
   const dias = nextDays(7);
   await wa.sendList(phone, {
-    title:      '📅 Paso 4 de 8 — Fecha',
-    body:       `Sala: *${salaNombre}*\nSelecciona la fecha de la audiencia:`,
+    title:      '📅 Paso 3 de 7 — Fecha',
+    body:       `Sede: *${session.datos.sedeNombre}*\nJuzgado: *${juzgadoNombre}*\nSelecciona la fecha de la audiencia:`,
     buttonText: 'Ver fechas',
     sections: [{
       title: 'Próximos 7 días',
@@ -156,22 +132,31 @@ async function pasoTres_Fecha(phone, idSala, salaNombre) {
 }
 
 // ═════════════════════════════════════════════════════════════
-//  PASO 5 — Seleccionar horario (solo slots libres)
+//  PASO 4 — Seleccionar horario por intervalo de slots
+//  El usuario selecciona 2 números (inicio y fin del rango)
+//  Ej: slots disponibles numerados 1-8, usuario elige "2-4"
 // ═════════════════════════════════════════════════════════════
-async function pasoCuatro_Horario(phone, fecha, fechaLabel) {
+async function pasoTres_Horario(phone, fecha, fechaLabel) {
   const session = getSession(phone);
-  const { idSala, salaNombre } = session.datos;
-  setSession(phone, { paso: 5, datos: { ...session.datos, fecha, fechaLabel } });
+  // Para el horario usamos la primera sala disponible de la sede/juzgado
+  // (la sala se asigna automáticamente según disponibilidad)
+  const { idSede } = session.datos;
+  setSession(phone, { paso: 4, datos: { ...session.datos, fecha, fechaLabel } });
 
-  const slots = await db.getSlotsDisponibles({ idSala, fecha });
+  // Obtener slots disponibles del sistema (usamos salas activas de esa sede)
+  const salas = await db.getSalas();
+  const salaActiva = salas.find(s => s.activa) || salas[0];
+
+  let slots = [];
+  if (salaActiva) {
+    slots = await db.getSlotsDisponibles({ idSala: salaActiva.id, fecha });
+  }
 
   if (slots.length === 0) {
     await wa.sendButtons(phone, {
-      title: '😔 Sin disponibilidad',
-      body: `*${salaNombre}* no tiene horarios libres el *${fechaLabel}*.
-¿Qué deseas hacer?`,
+      title:  '😔 Sin disponibilidad',
+      body:   `No hay horarios libres para el *${fechaLabel}*.\n¿Qué deseas hacer?`,
       buttons: [
-        { id: 'cambiar_sala',  text: '🔄 Cambiar sala'  },
         { id: 'cambiar_fecha', text: '📅 Cambiar fecha'  },
         { id: 'menu_inicio',   text: '🏠 Menú principal' },
       ],
@@ -179,83 +164,126 @@ async function pasoCuatro_Horario(phone, fecha, fechaLabel) {
     return;
   }
 
-  // Guardar slots en sesión para resolver el intervalo después
-  setSession(phone, { paso: 5, datos: { ...session.datos, fecha, fechaLabel, _slots: slots } });
+  // Numerar los slots para que el usuario elija un intervalo
+  const manana = slots.filter(s => parseInt(s.inicio) < 12);
+  const tarde  = slots.filter(s => parseInt(s.inicio) >= 12);
 
-  const lineas = [`🕐 *Paso 5 de 8 — Horario disponible*
-`];
-  lineas.push(`Sala: *${salaNombre}* | Fecha: *${fechaLabel}*
-`);
-  lineas.push('Slots disponibles:
-');
-  slots.forEach((s, i) => lineas.push(`${i + 1}. ${s.inicio} – ${s.fin}`));
-  lineas.push('
-📝 Responde con el rango deseado.');
-  lineas.push(`Ej: \`2-4\` = desde las ${slots[1]?.inicio} hasta las ${slots[3]?.fin}`);
-  lineas.push(`Un solo slot: \`3-3\` = solo ${slots[2]?.inicio} – ${slots[2]?.fin}`);
+  const sections = [];
+  const allSlots = [...manana, ...tarde];
 
-  await wa.sendText(phone, lineas.join('
-'));
+  // Guardar slots en sesión para referencia
+  setSession(phone, { paso: 4, datos: { ...session.datos, fecha, fechaLabel, _slots: allSlots } });
+
+  // Mostrar slots numerados con indicación de intervalo
+  const slotRows = allSlots.map((s, idx) => ({
+    id:          `slot_${s.inicio}_${s.fin}`,
+    title:       `${idx + 1}. ${slotLabel(s)}`,
+    description: `Slot ${idx + 1}`,
+  }));
+
+  const nSlots = allSlots.length;
+  await wa.sendList(phone, {
+    title:      '🕐 Paso 4 de 7 — Horario',
+    body:
+      `Fecha: *${fechaLabel}*\n\n` +
+      `Selecciona el slot de inicio.\n` +
+      `Puedes elegir un rango escribiendo ej: *2-4* para cubrir del slot 2 al 4.\n` +
+      `_(${nSlots} horarios disponibles)_`,
+    buttonText: `Ver ${nSlots} horarios`,
+    sections: [
+      ...(manana.length ? [{
+        title: '🌅 Mañana',
+        rows: manana.map((s, idx) => ({
+          id: `slot_${s.inicio}_${s.fin}`,
+          title: `${idx + 1}. ${slotLabel(s)}`,
+        })),
+      }] : []),
+      ...(tarde.length ? [{
+        title: '🌇 Tarde',
+        rows: tarde.map((s, idx) => ({
+          id: `slot_${manana.length + idx + 1}_${s.inicio}_${s.fin}`,
+          title: `${manana.length + idx + 1}. ${slotLabel(s)}`,
+        })),
+      }] : []),
+    ],
+  });
 }
+
 // ═════════════════════════════════════════════════════════════
-//  PASO 6 — Internos (texto libre validado)
+//  PASO 4b — Procesar rango de slots (ej: "2-4")
+//  Llamado desde commands.js cuando el usuario escribe un rango
 // ═════════════════════════════════════════════════════════════
-async function pasoCinco_Internos(phone, inicio, fin) {
+async function procesarRangoSlots(phone, textoRango) {
   const session = getSession(phone);
-  setSession(phone, { paso: 6, datos: { ...session.datos, inicio, fin } });
+  const { _slots, fecha, fechaLabel } = session.datos;
+
+  if (!_slots || !_slots.length) {
+    await wa.sendText(phone, '⚠️ Sesión expirada. Por favor inicia de nuevo.');
+    clearSession(phone);
+    return false;
+  }
+
+  // Parsear "2-4" o "2" (slot único)
+  const match = textoRango.trim().match(/^(\d+)(?:-(\d+))?$/);
+  if (!match) {
+    await wa.sendText(phone,
+      `⚠️ Formato inválido. Escribe el número de slot o un rango.\n` +
+      `Ejemplo: *3* para un solo slot, o *2-4* para cubrir del slot 2 al 4.`
+    );
+    return false;
+  }
+
+  const n1 = parseInt(match[1]);
+  const n2 = match[2] ? parseInt(match[2]) : n1;
+
+  if (n1 < 1 || n2 > _slots.length || n1 > n2) {
+    await wa.sendText(phone,
+      `⚠️ Rango inválido. Los slots disponibles son del 1 al ${_slots.length}.\n` +
+      `El número inicial debe ser menor o igual al final.`
+    );
+    return false;
+  }
+
+  const slotInicio = _slots[n1 - 1];
+  const slotFin    = _slots[n2 - 1];
+  const inicio     = slotInicio.inicio;
+  const fin        = slotFin.fin;
+  const idSala     = slotInicio.id_sala || _slots[0].id_sala;
+
+  const nuevosDatos = { ...session.datos, inicio, fin, idSala, _slots: undefined };
+  setSession(phone, { paso: 5, datos: nuevosDatos });
 
   await wa.sendText(phone,
     `✅ Horario: *${inicio} – ${fin}*\n\n` +
-    `👤 *Paso 6 de 8 — Interno(s)*\n\n` +
+    `👤 *Paso 5 de 7 — Interno(s)*\n\n` +
     `Escribe el nombre completo del interno o internos.\n\n` +
     `📝 Ejemplos:\n` +
     `• _Carlos Mamani Quispe_\n` +
     `• _Rosa Flores, Ana Cáceres Ramos_`
   );
+  return true;
 }
 
 // ═════════════════════════════════════════════════════════════
-//  PASO 7 — Expediente (texto libre validado)
-//  (Esta lógica se maneja en session-flow.js)
+//  PASO 5 — Internos (manejado en session-flow.js)
 // ═════════════════════════════════════════════════════════════
 
 // ═════════════════════════════════════════════════════════════
-//  PASO 8 — Seleccionar penal
+//  PASO 6 — Expediente (manejado en session-flow.js)
 // ═════════════════════════════════════════════════════════════
-async function pasoSiete_Penal(phone) {
-  const penales = await db.getPenales();
+
+// ═════════════════════════════════════════════════════════════
+//  CONFIRMAR RESUMEN
+// ═════════════════════════════════════════════════════════════
+async function mostrarConfirmacion(phone) {
   const session = getSession(phone);
-  setSession(phone, { ...session, paso: 8 });
-
-  await wa.sendList(phone, {
-    title:      '🏢 Paso 8 de 8 — Establecimiento penal',
-    body:       'Selecciona el penal del interno para enviar la invitación de Google Meet:',
-    buttonText: 'Ver penales',
-    sections: [{
-      title: 'Establecimientos penales',
-      rows:  penales.map(p => ({
-        id:          `penal_${p.id}`,
-        title:       `🏢 ${p.nombre}`,
-        description: p.email_calendar || 'Sin email registrado',
-      })),
-    }],
-  });
-}
-
-// ═════════════════════════════════════════════════════════════
-//  PASO 9 — Confirmar
-// ═════════════════════════════════════════════════════════════
-async function pasoOcho_Confirmar(phone, idPenal, penalNombre, emailPenal) {
-  const session = getSession(phone);
-  const datos   = { ...session.datos, idPenal, penalNombre, emailPenal };
-  setSession(phone, { paso: 9, datos });
-
-  const resumen = generarResumen(datos);
+  setSession(phone, { ...session, paso: 9 });
+  const resumen = generarResumen(session.datos);
   await wa.sendConfirm(phone, resumen, 'Esta acción registrará la audiencia en el sistema.');
 }
 
 // ═════════════════════════════════════════════════════════════
-//  PASO 9 — Guardar todo
+//  CONFIRMAR — Guardar todo
 // ═════════════════════════════════════════════════════════════
 async function confirmarAgendamiento(phone) {
   const session = getSession(phone);
@@ -264,7 +292,7 @@ async function confirmarAgendamiento(phone) {
   await wa.sendText(phone, '⏳ Registrando audiencia...');
 
   try {
-    // 1. Verificar overlap una última vez (por seguridad)
+    // 1. Verificar overlap
     const { disponible, conflicto } = await db.verificarDisponibilidad({
       idSala: d.idSala,
       fecha:  d.fecha,
@@ -276,10 +304,10 @@ async function confirmarAgendamiento(phone) {
       clearSession(phone);
       await wa.sendButtons(phone, {
         title: '⛔ Conflicto de horario',
-        body:  `Mientras completabas el formulario, alguien agendó:\n\n` +
-               `*${conflicto.sala_nombre}* | ${conflicto.inicio} – ${conflicto.fin}\n` +
-               `EXP. ${conflicto.expediente}\n\n` +
-               `Debes elegir otro horario.`,
+        body:
+          `Mientras completabas el formulario, alguien agendó:\n\n` +
+          `${conflicto.inicio} – ${conflicto.fin} | EXP. ${conflicto.expediente}\n\n` +
+          `Debes elegir otro horario.`,
         buttons: [
           { id: 'menu_agendar', text: '🔄 Reagendar' },
           { id: 'menu_inicio',  text: '🏠 Menú'       },
@@ -288,22 +316,29 @@ async function confirmarAgendamiento(phone) {
       return;
     }
 
-    // 2. Crear Meet en Google Calendar
-    const { link: linkMeet, eventId } = await crearMeet({
-      expediente: d.expediente,
-      sala:       d.salaNombre,
-      fecha:      d.fecha,
-      inicio:     d.inicio,
-      fin:        d.fin,
-      emails:     d.emailPenal ? [d.emailPenal] : [],
-    });
+    // 2. Crear Meet en Google Calendar (pendiente de automatización)
+    let linkMeet = null;
+    let eventId  = null;
+    try {
+      const meet = await crearMeet({
+        expediente: d.expediente,
+        juzgado:    d.juzgadoNombre,
+        fecha:      d.fecha,
+        inicio:     d.inicio,
+        fin:        d.fin,
+        emails:     [],
+      });
+      linkMeet = meet.link;
+      eventId  = meet.eventId;
+    } catch (err) {
+      logger.warn({ err }, '⚠️ Meet no generado — pendiente de configuración de credenciales');
+    }
 
     // 3. Guardar en PostgreSQL
     const audiencia = await db.crearAudiencia({
       idSala:          d.idSala,
       idSede:          d.idSede,
       idJuzgado:       d.idJuzgado,
-      idPenal:         d.idPenal,
       fecha:           d.fecha,
       inicio:          d.inicio,
       fin:             d.fin,
@@ -315,49 +350,42 @@ async function confirmarAgendamiento(phone) {
       eventoCalendarId: eventId,
     });
 
-    // Sincronizar con backend Java para que la web lo vea
+    // 4. Sincronizar con backend Java PLATS
     try {
       await plats.crearAudiencia({
         idSala:      d.idSala,
         idSede:      d.idSede,
-        idInstancia: String(d.idJuzgado),
+        idInstancia: d.idJuzgado,
         expediente:  d.expediente,
         internos:    d.internos,
-        solicitante: d.solicitante || 'BOT-WHATSAPP',
-        comunicacion: 'WHATSAPP',
-        link:        linkMeet || '',
+        solicitante: d.solicitante || 'BOT',
         fecha:       d.fecha,
         inicio:      d.inicio,
         fin:         d.fin,
+        link:        linkMeet,
+        comunicacion: 'WHATSAPP',
       });
-    } catch (syncErr) {
-      logger.warn({ syncErr }, '⚠️  No se pudo sincronizar con backend Java — solo guardado en PostgreSQL');
-    }
-
-    // 4. Intentar conectar penal automáticamente
-    if (d.idPenal && linkMeet) {
-      conectarPenal(d.penalNombre, linkMeet, d.expediente)
-        .then(r => r.ok
-          ? logger.info({ penal: d.penalNombre }, '🔗 Penal conectado')
-          : logger.warn({ penal: d.penalNombre, err: r.error }, '⚠️ Penal no conectado')
-        );
+    } catch (err) {
+      logger.warn({ err }, '⚠️ No se pudo sincronizar con backend Java');
     }
 
     // 5. Limpiar sesión
     clearSession(phone);
 
-    // 6. Responder con resumen final
+    // 6. Respuesta final
     await wa.sendText(phone,
       `✅ *Audiencia registrada exitosamente*\n\n` +
       `🆔 ID: *${audiencia.id}*\n` +
       `📄 Expediente: *${d.expediente}*\n` +
-      `🏛️ Sala: *${d.salaNombre}*\n` +
-      `📅 Fecha: *${d.fecha}*\n` +
+      `🏛️ Sede: *${d.sedeNombre}*\n` +
+      `⚖️ Juzgado: *${d.juzgadoNombre}*\n` +
+      `📅 Fecha: *${d.fechaLabel || d.fecha}*\n` +
       `🕐 Horario: *${d.inicio} – ${d.fin}*\n` +
       `👤 Internos: ${d.internos}\n` +
-      `🏢 Penal: ${d.penalNombre}\n` +
-      (linkMeet ? `\n🎥 *Google Meet:*\n${linkMeet}\n` : '') +
-      (d.emailPenal ? `\n📧 Invitación enviada a: ${d.emailPenal}` : '')
+      `🙋 Solicitante: ${d.solicitante}\n` +
+      (linkMeet
+        ? `\n🎥 *Google Meet:*\n${linkMeet}`
+        : `\n🎥 Meet: _(pendiente — configura Google credentials en .env)_`)
     );
 
     logger.info({ audienciaId: audiencia.id, expediente: d.expediente }, '✅ Audiencia confirmada');
@@ -377,11 +405,9 @@ module.exports = {
   menuPrincipal,
   pasoCero_Sede,
   pasoUno_Juzgado,
-  pasoDos_Sala,
-  pasoTres_Fecha,
-  pasoCuatro_Horario,
-  pasoCinco_Internos,
-  pasoSiete_Penal,
-  pasoOcho_Confirmar,
+  pasoDos_Fecha,
+  pasoTres_Horario,
+  procesarRangoSlots,
+  mostrarConfirmacion,
   confirmarAgendamiento,
 };

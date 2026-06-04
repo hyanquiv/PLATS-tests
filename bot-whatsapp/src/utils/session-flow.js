@@ -1,25 +1,21 @@
 /**
  * session-flow.js
- * Maneja el estado de la conversación paso a paso por usuario.
- * Cada número de WhatsApp tiene su propio estado independiente.
+ * Flujo de agendamiento simplificado — solo los campos necesarios.
  *
- * Pasos del flujo:
- *  0  → Menú principal (botones)
- *  1  → Sede solicitante (lista)
- *  2  → Juzgado (lista, filtrada por sede)
- *  3  → Sala (lista)
- *  4  → Fecha (lista: próximos 7 días)
- *  5  → Horario como INTERVALO de slots (ej: "2-4")
- *         — muestra la lista numerada de slots disponibles
- *         — el usuario responde con dos números "X-Y"
- *  6  → Internos (texto libre, validado con regex internos)
- *  7  → Expediente (texto libre, validado con regex expediente)
- *  8  → Penal (lista con email_calendar)
- *  9  → Confirmar (botones: Confirmar / Cancelar)
+ * Pasos:
+ *  0  → Menú principal
+ *  1  → Seleccionar sede
+ *  2  → Seleccionar juzgado
+ *  3  → Seleccionar fecha
+ *  4  → Seleccionar horario (intervalo de slots, ej: 2-4)
+ *  5  → Escribir internos       ← VALIDADO con regex
+ *  6  → Escribir expediente     ← VALIDADO con regex
+ *  7  → Confirmar solicitante   ← Obtenido de usuario WhatsApp o ingresado manualmente
+ *  8  → Confirmar resumen
  */
 
 const NodeCache = require('node-cache');
-const { validar, normalizarExpediente, normalizarNombre, parsearIntervaloHorario } = require('./validators');
+const { validar, normalizarExpediente, normalizarNombre } = require('./validators');
 
 // Sesiones expiran en 15 minutos de inactividad
 const sessions = new NodeCache({ stdTTL: 900, checkperiod: 120 });
@@ -38,117 +34,142 @@ function clearSession(phone) {
 
 /**
  * Procesa la respuesta del usuario en el paso actual.
- * Retorna { respuesta, siguientePaso, datos, completado }
  */
 async function procesarPaso(phone, textoUsuario) {
   const session = getSession(phone);
   const { paso, datos } = session;
 
-  // ── Paso 5: Horario por intervalo (texto libre con slots numerados) ─────────
+  // ── Paso 5: Internos ──────────────────────────────────────────
   if (paso === 5) {
-    const slots = Array.isArray(datos._slots) ? datos._slots : [];
-    const { ok, inicio, fin } = parsearIntervaloHorario(textoUsuario, slots.length);
-    if (!ok || !slots.length) {
-      const lineas = ['Formato inválido. Responde con el intervalo deseado usando los números de los slots:'];
-      slots.forEach((s, i) => lineas.push(`${i + 1}. ${s.inicio} – ${s.fin}`));
-      lineas.push('Ej: `2-4` = desde el slot 2 hasta el slot 4.');
-      return {
-        respuesta: lineas.join('
-'),
-        siguientePaso: 5,
-        datos
-      };
-    }
-    const nuevosDatos = {
-      ...datos,
-      inicio: slots[inicio].inicio,
-      fin:    slots[fin].fin,
-    };
-    setSession(phone, { paso: 6, datos: nuevosDatos });
-    return {
-      respuesta:
-        `✅ Horario seleccionado: *${slots[inicio].inicio} – ${slots[fin].fin}*
-
-` +
-        `Ahora escribe el nombre completo del interno o internos.
-` +
-        `Ejemplo: _Carlos Mamani Quispe_
-` +
-        `Para varios: _Carlos Mamani, Rosa Flores_`,
-      siguientePaso: 6,
-      datos: nuevosDatos
-    };
-  }
-
-  // ── Paso 6: Internos (texto libre con validación) ─────────────
-  if (paso === 6) {
     const { ok, mensaje } = validar('internos', textoUsuario);
     if (!ok) {
       return {
         respuesta:
-          `${mensaje}
-
-` +
-          `Escribe el nombre completo del interno o internos.
-` +
-          `Ejemplo: _Carlos Mamani Quispe_
-` +
+          `${mensaje}\n\n` +
+          `Escribe el nombre completo del interno o internos.\n` +
+          `Ejemplo: _Carlos Mamani Quispe_\n` +
           `Para varios: _Carlos Mamani, Rosa Flores_`,
-        siguientePaso: 6,
+        siguientePaso: 5,
         datos
       };
     }
     const nombreNorm = normalizarNombre(textoUsuario);
     const nuevosDatos = { ...datos, internos: nombreNorm };
-    setSession(phone, { paso: 7, datos: nuevosDatos });
+    setSession(phone, { paso: 6, datos: nuevosDatos });
     return {
       respuesta:
-        `✅ Interno(s): *${nombreNorm}*
-
-` +
-        `Ahora escribe el *número de expediente*
-` +
-        `Formato: _00000-AAAA-00_
-` +
+        `✅ Interno(s): *${nombreNorm}*\n\n` +
+        `📄 *Paso 6 de 7 — Expediente*\n\n` +
+        `Escribe el número de expediente.\n` +
+        `Formato: _12345-AAAA-00_  (5 dígitos, año, 0 al 99)\n` +
         `Ejemplo: _09167-2025-90_`,
-      siguientePaso: 7,
+      siguientePaso: 6,
       datos: nuevosDatos
     };
   }
 
-  // ── Paso 7: Expediente (texto libre con validación) ────────────
-  if (paso === 7) {
+  // ── Paso 6: Expediente ────────────────────────────────────────
+  if (paso === 6) {
     const expNorm = normalizarExpediente(textoUsuario);
     const { ok, mensaje } = validar('expediente', expNorm);
     if (!ok) {
       return {
         respuesta:
-          `${mensaje}
-
-` +
-          `Escribe el expediente en el formato correcto.
-` +
+          `${mensaje}\n\n` +
+          `Escribe el expediente en el formato correcto.\n` +
+          `Formato: _12345-AAAA-00_\n` +
           `Ejemplo: _09167-2025-90_`,
-        siguientePaso: 7,
+        siguientePaso: 6,
         datos
       };
     }
     const nuevosDatos = { ...datos, expediente: expNorm };
-    setSession(phone, { paso: 8, datos: nuevosDatos });
+    setSession(phone, { paso: 7, datos: nuevosDatos });
+
+    // Si ya tenemos el solicitante desde el perfil WhatsApp, saltar al paso 8
+    if (nuevosDatos.solicitante) {
+      setSession(phone, { paso: 8, datos: nuevosDatos });
+      return {
+        respuesta:
+          `✅ Expediente: *${expNorm}*\n\n` +
+          `👤 Solicitante detectado: *${nuevosDatos.solicitante}*\n\n` +
+          `¿Es correcto? Responde *SI* para continuar o escribe el nombre correcto.`,
+        siguientePaso: 8,
+        datos: nuevosDatos
+      };
+    }
+
     return {
       respuesta:
-        `✅ Expediente: *${expNorm}*
-
-` +
-        `Selecciona el *establecimiento penal* del interno:`,
-      siguientePaso: 8,
-      datos: nuevosDatos,
-      mostrarListaPenales: true
+        `✅ Expediente: *${expNorm}*\n\n` +
+        `👤 *Paso 7 de 7 — Solicitante*\n\n` +
+        `Escribe tu nombre completo (quien solicita la audiencia).\n` +
+        `Ejemplo: _Dr. Juan Pérez Vargas_`,
+      siguientePaso: 7,
+      datos: nuevosDatos
     };
   }
 
-  // Para los demás pasos (selectores) el flujo se maneja
-  // en commands.js con botones/listas de OpenWA
+  // ── Paso 7: Solicitante (fallback manual) ─────────────────────
+  if (paso === 7) {
+    const { ok, mensaje } = validar('solicitante', textoUsuario);
+    if (!ok) {
+      return {
+        respuesta:
+          `${mensaje}\n\n` +
+          `Escribe el nombre del solicitante.\n` +
+          `Ejemplo: _Dr. Juan Pérez Vargas_`,
+        siguientePaso: 7,
+        datos
+      };
+    }
+    const solNorm = normalizarNombre(textoUsuario);
+    const nuevosDatos = { ...datos, solicitante: solNorm };
+    setSession(phone, { paso: 8, datos: nuevosDatos });
+    return {
+      respuesta:
+        `✅ Solicitante: *${solNorm}*`,
+      siguientePaso: 8,
+      datos: nuevosDatos,
+      mostrarConfirmacion: true
+    };
+  }
+
+  // ── Paso 8: Confirmar solicitante detectado ───────────────────
+  if (paso === 8) {
+    const txt = textoUsuario.trim().toUpperCase();
+    if (txt === 'SI' || txt === 'SÍ') {
+      // Solicitante confirmado, ir a resumen
+      return {
+        respuesta: null,
+        siguientePaso: 8,
+        datos,
+        mostrarConfirmacion: true
+      };
+    } else {
+      // El usuario quiere cambiar el nombre
+      const { ok, mensaje } = validar('solicitante', textoUsuario);
+      if (!ok) {
+        return {
+          respuesta:
+            `${mensaje}\n\nEscribe el nombre correcto del solicitante.\n` +
+            `Ejemplo: _Dr. Juan Pérez Vargas_\n\nO responde *SI* para confirmar el nombre detectado.`,
+          siguientePaso: 8,
+          datos
+        };
+      }
+      const solNorm = normalizarNombre(textoUsuario);
+      const nuevosDatos = { ...datos, solicitante: solNorm };
+      setSession(phone, { paso: 8, datos: nuevosDatos });
+      return {
+        respuesta: `✅ Solicitante actualizado: *${solNorm}*`,
+        siguientePaso: 8,
+        datos: nuevosDatos,
+        mostrarConfirmacion: true
+      };
+    }
+  }
+
   return { respuesta: null, siguientePaso: paso, datos };
 }
 
@@ -157,25 +178,23 @@ async function procesarPaso(phone, textoUsuario) {
  */
 function generarResumen(datos) {
   const {
-    sedeName, juzgadoName, salaName,
-    fecha, inicio, fin,
-    internos, expediente,
-    penalName, emailPenal, linkMeet
+    sedeNombre, juzgadoNombre,
+    fecha, fechaLabel, inicio, fin,
+    internos, expediente, solicitante,
+    linkMeet
   } = datos;
 
   return (
     `📋 *Resumen de la audiencia*\n\n` +
-    `🏛️ *Sede:* ${sedeName}\n` +
-    `⚖️ *Juzgado:* ${juzgadoName}\n` +
-    `🚪 *Sala:* ${salaName}\n` +
-    `📅 *Fecha:* ${fecha}\n` +
+    `🏛️ *Sede:* ${sedeNombre || '—'}\n` +
+    `⚖️ *Juzgado:* ${juzgadoNombre || '—'}\n` +
+    `📅 *Fecha:* ${fechaLabel || fecha || '—'}\n` +
     `🕐 *Horario:* ${inicio} – ${fin}\n` +
-    `👤 *Interno(s):* ${internos}\n` +
-    `📄 *Expediente:* ${expediente}\n` +
-    `🏢 *Penal:* ${penalName}\n` +
-    `📧 *Penal (Google Calendar):* ${emailPenal || '—'}\n` +
-    `🔗 *Meet:* ${linkMeet || '(se generará automáticamente)'}\n\n` +
-    `¿Confirmas el agendamiento?`
+    `👤 *Interno(s):* ${internos || '—'}\n` +
+    `📄 *Expediente:* ${expediente || '—'}\n` +
+    `🙋 *Solicitante:* ${solicitante || '—'}\n` +
+    (linkMeet ? `🎥 *Meet:* _(se generará al confirmar)_\n` : `🎥 *Meet:* _(se generará al confirmar)_\n`) +
+    `\n¿Confirmas el agendamiento?`
   );
 }
 

@@ -14,35 +14,57 @@ app.use(express.urlencoded({ extended: true }));
 let nextId = 100;
 
 const SALAS = [
-  { id: 1, nombre: 'SALA 1',    capacidad: 30, cantidad: 30 },
-  { id: 2, nombre: 'SALA 2',    capacidad: 30, cantidad: 30 },
-  { id: 3, nombre: 'SALA 3',    capacidad: 30, cantidad: 30 },
-  { id: 4, nombre: 'CABINA 4',  capacidad: 1,  cantidad: 1  },
-  { id: 5, nombre: 'CABINA 5',  capacidad: 1,  cantidad: 1  },
-  { id: 6, nombre: 'CABINA 6',  capacidad: 1,  cantidad: 1  },
-  { id: 7, nombre: 'MUJERES',   capacidad: 10, cantidad: 10 },
+  { id: 1, nombre: 'SALA 1',   cantidad: 30 },
+  { id: 2, nombre: 'SALA 2',   cantidad: 30 },
+  { id: 3, nombre: 'SALA 3',   cantidad: 30 },
+  { id: 4, nombre: 'CABINA 4', cantidad: 1  },
+  { id: 5, nombre: 'CABINA 5', cantidad: 1  },
+  { id: 6, nombre: 'CABINA 6', cantidad: 1  },
+  { id: 7, nombre: 'MUJERES',  cantidad: 10 },
 ];
 
 const SEDES = [
-  { id: '0401', denominacion: 'SEDE CENTRAL AREQUIPA' },
-  { id: '0402', denominacion: 'SEDE HUNTER' },
-  { id: '0403', denominacion: 'SEDE PAUCARPATA' },
+  { id: '0401', denominacion: 'PAUCARPATA' },
+  { id: '0402', denominacion: 'MIRAFLORES' },
+  { id: '0403', denominacion: 'CERRO COLORADO' },
+  { id: '0404', denominacion: 'TACNA' },
+  { id: '0405', denominacion: 'LIMA' },
+  { id: '0406', denominacion: 'CUSCO' },
 ];
 
 const INSTANCIAS = {
+  // Mismos juzgados base para todas las sedes (ajustar según real)
   '0401': [
-    { id: '1', denominacion: '1° JUZGADO PENAL UNIPERSONAL' },
-    { id: '2', denominacion: '2° JUZGADO PENAL UNIPERSONAL' },
-    { id: '3', denominacion: '1° JUZGADO PENAL COLEGIADO' },
-    { id: '4', denominacion: 'JUZGADO DE INVESTIGACIÓN PREPARATORIA — JIP' },
-    { id: '5', denominacion: '1° JUZGADO UNIPERSONAL DE FLAGRANCIA — JUP' },
+    { id: '1',  denominacion: '1° JUZGADO PENAL UNIPERSONAL' },
+    { id: '2',  denominacion: '2° JUZGADO PENAL UNIPERSONAL' },
+    { id: '3',  denominacion: '3° JUZGADO PENAL UNIPERSONAL' },
+    { id: '4',  denominacion: '1° JUZGADO PENAL COLEGIADO' },
+    { id: '5',  denominacion: '2° JUZGADO PENAL COLEGIADO' },
+    { id: '6',  denominacion: 'JUZGADO DE INVESTIGACIÓN PREPARATORIA — JIP' },
+    { id: '7',  denominacion: 'JUZGADO UNIPERSONAL DE FLAGRANCIA — JUP' },
   ],
   '0402': [
-    { id: '6', denominacion: '1° JUZGADO MIXTO HUNTER' },
-    { id: '7', denominacion: '2° JUZGADO MIXTO HUNTER' },
+    { id: '8',  denominacion: '1° JUZGADO PENAL UNIPERSONAL' },
+    { id: '9',  denominacion: '2° JUZGADO PENAL UNIPERSONAL' },
+    { id: '10', denominacion: 'JUZGADO DE INVESTIGACIÓN PREPARATORIA — JIP' },
+    { id: '11', denominacion: 'JUZGADO UNIPERSONAL DE FLAGRANCIA — JUP' },
   ],
   '0403': [
-    { id: '8', denominacion: '1° JUZGADO MIXTO PAUCARPATA' },
+    { id: '12', denominacion: '1° JUZGADO PENAL UNIPERSONAL' },
+    { id: '13', denominacion: 'JUZGADO DE INVESTIGACIÓN PREPARATORIA — JIP' },
+  ],
+  '0404': [
+    { id: '14', denominacion: '1° JUZGADO PENAL UNIPERSONAL' },
+    { id: '15', denominacion: 'JUZGADO DE INVESTIGACIÓN PREPARATORIA — JIP' },
+  ],
+  '0405': [
+    { id: '16', denominacion: '1° JUZGADO PENAL UNIPERSONAL' },
+    { id: '17', denominacion: '2° JUZGADO PENAL UNIPERSONAL' },
+    { id: '18', denominacion: 'JUZGADO DE INVESTIGACIÓN PREPARATORIA — JIP' },
+  ],
+  '0406': [
+    { id: '19', denominacion: '1° JUZGADO PENAL UNIPERSONAL' },
+    { id: '20', denominacion: 'JUZGADO DE INVESTIGACIÓN PREPARATORIA — JIP' },
   ],
 };
 

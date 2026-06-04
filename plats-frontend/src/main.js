@@ -35,7 +35,7 @@ function normalizeTime(t) { const [h,m]=t.split(':').map(Number); return `${fmt2
 
 // ── VALIDACIÓN inline ────────────────────────────────────────
 const PATTERNS = {
-  expediente: /^\d{4,6}-\d{4}-\d{2,4}$/,
+  expediente: /^\d{5}-\d{4}-\d{1,2}$/,  // 5 dígitos exactos - año - 0 al 99
   internos:   /^[A-Za-záéíóúÁÉÍÓÚüÜñÑ][A-Za-záéíóúÁÉÍÓÚüÜñÑ\s\-,.]{4,120}$/,
   solicitante:/^(Dr\.|Dra\.)?\s?[A-Za-záéíóúÁÉÍÓÚñÑ][A-Za-záéíóúÁÉÍÓÚñÑ\s\.]{4,80}$/,
 };
@@ -151,8 +151,8 @@ function renderApp() {
           </div>
           <div class="form-group full-width"><label class="form-label">N° Expediente</label>
             <input class="form-input" type="text" id="txtExpediente"
-              placeholder="00000-AAAA-00" oninput="validarCampo('txtExpediente', PATTERNS.expediente)"
-              style="font-size:15px;font-weight:600;letter-spacing:.5px">
+              placeholder="12345-2025-01" oninput="validarCampo('txtExpediente', PATTERNS.expediente)"
+              style="font-size:15px;font-weight:600;letter-spacing:.5px" title="Formato: 12345-AAAA-00 (5 dígitos, año, número 0-99)">
             <span class="form-hint" id="txtExpediente-hint"></span></div>
           <div class="form-group full-width"><label class="form-label">Interno(s)</label>
             <input class="form-input" type="text" id="txtInternos"
