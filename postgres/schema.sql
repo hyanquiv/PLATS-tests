@@ -126,14 +126,14 @@ CREATE OR REPLACE TRIGGER trg_audiencias_updated
 -- ═══════════════════════════════════════════════════════════════
 
 -- Salas (igual que el PLATS original)
-INSERT INTO salas (id, nombre, tipo, capacidad) VALUES
-  (1, 'SALA 1',   'SALA',   30),
-  (2, 'SALA 2',   'SALA',   30),
-  (3, 'SALA 3',   'SALA',   30),
-  (4, 'CABINA 4', 'CABINA',  1),
-  (5, 'CABINA 5', 'CABINA',  1),
-  (6, 'CABINA 6', 'CABINA',  1),
-  (7, 'MUJERES',  'CABINA', 10)
+INSERT INTO salas (id, nombre, tipo) VALUES
+  (1, 'SALA 1',   'SALA'  ),
+  (2, 'SALA 2',   'SALA'  ),
+  (3, 'SALA 3',   'SALA'  ),
+  (4, 'CABINA 4', 'CABINA'),
+  (5, 'CABINA 5', 'CABINA'),
+  (6, 'CABINA 6', 'CABINA'),
+  (7, 'MUJERES',  'CABINA')
 ON CONFLICT (id) DO NOTHING;
 
 -- Resetear secuencia después de insertar IDs manuales
