@@ -247,6 +247,31 @@ async function actualizarLinkMeet(idAudiencia, linkMeet, eventoCalendarId) {
   );
 }
 
+async function actualizarAudiencia(idAudiencia, {
+  idSala, idSede, idJuzgado,
+  fecha, inicio, fin,
+  expediente, internos, solicitante,
+  comunicacion, linkMeet,
+}) {
+  const { rows } = await pool.query(`
+    UPDATE audiencias SET
+      id_sala=$1, id_sede=$2, id_juzgado=$3,
+      fecha=$4, inicio=$5, fin=$6,
+      expediente=$7, internos=$8, solicitante=$9,
+      comunicacion=$10, link_meet=$11,
+      actualizado_en=NOW()
+    WHERE id=$12
+    RETURNING *
+  `, [
+    idSala, idSede, idJuzgado,
+    fecha, inicio, fin,
+    expediente, internos, solicitante,
+    comunicacion, linkMeet || null,
+    idAudiencia,
+  ]);
+  return rows[0];
+}
+
 async function cancelarAudiencia(idAudiencia) {
   await pool.query(
     "UPDATE audiencias SET estado='CANCELADA' WHERE id=$1",
@@ -298,6 +323,7 @@ module.exports = {
   getAudienciaPorExpediente,
   crearAudiencia,
   actualizarLinkMeet,
+  actualizarAudiencia,
   cancelarAudiencia,
   getUsuario,
   registrarUsuario,
